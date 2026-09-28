@@ -74,10 +74,17 @@ RECORDINGS: dict[str, dict] = {}
 # in the API design doc says to compute two different R dicts per recording,
 # so one recording is analyzed once, in full, and both personas read from
 # the same stored result.
+# Fallback only -- both frontends now send their own explicit feature_flags
+# (see app_full_client.py's FEATURE_FLAGS, app_esm_client.py's
+# ESM_FEATURE_FLAGS), so this path shouldn't be hit in normal use. Kept lean
+# rather than "everything on" so a future caller that forgets to send flags
+# (a new persona, a direct /docs test) doesn't silently get the slowest
+# possible request and risk the same proxy-timeout 502 pattern we already
+# chased down once.
 DEFAULT_FEATURE_FLAGS = dict(
-    do_mel=True, do_cqt=True, do_mfcc=True, do_chroma=True, do_spectral=True,
-    do_onset=True, do_sms=True, do_stft=True, do_cwt=False, do_gammatone=False,
-    do_tonnetz=False, do_zcr=True, do_reverb=False,
+    do_mel=True, do_cqt=False, do_mfcc=False, do_chroma=True, do_spectral=True,
+    do_onset=True, do_sms=False, do_stft=False, do_cwt=False, do_gammatone=False,
+    do_tonnetz=False, do_zcr=False, do_reverb=False,
 )
 
 
