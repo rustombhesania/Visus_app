@@ -154,13 +154,23 @@ with st.sidebar:
 
     st.subheader("Features")
     with st.expander("Core", expanded=True):
+        # Defaults trimmed to the cheapest set that still covers the
+        # Overview/Song Map/Alignment tabs (chroma+onset drive DTW, mel
+        # covers the base spectrogram view). CQT, MFCC and SMS/HPSS are
+        # the most compute-heavy transforms in compute.py (CQT is an 84-bin
+        # constant-Q transform; HPSS runs an extra harmonic/percussive
+        # decomposition pass) -- on Render's free-tier CPU they're the
+        # likeliest reason a comparison request runs long enough to hit
+        # the platform's proxy timeout (seen as a 502 even though the
+        # backend itself finishes and logs 200). Left as opt-in checkboxes,
+        # not removed -- turn them on when you actually need those tabs.
         do_mel      = st.checkbox("Mel Spectrogram",     value=True)
-        do_cqt      = st.checkbox("CQT + Key Detection", value=True)
-        do_mfcc     = st.checkbox("MFCCs",               value=True)
+        do_cqt      = st.checkbox("CQT + Key Detection", value=False)
+        do_mfcc     = st.checkbox("MFCCs",               value=False)
         do_chroma   = st.checkbox("Chroma",              value=True)
         do_spectral = st.checkbox("Spectral Features",   value=True)
         do_onset    = st.checkbox("Onset & Beats",       value=True)
-        do_sms      = st.checkbox("SMS / HPSS",          value=True)
+        do_sms      = st.checkbox("SMS / HPSS",          value=False)
     with st.expander("Optional", expanded=False):
         do_stft      = st.checkbox("STFT",               value=False)
         do_cwt       = st.checkbox("CWT / Scalogram",    value=False)
@@ -374,15 +384,142 @@ def insight_card(icon, headline, detail):
         unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
+# Shared stream-graph drawing (used by the full-size Song Map tab
+# AND by the eager per-cell thumbnails in the matrix grid below --
+# same drawing code, two sizes, so a thumbnail and its expanded
+# view are guaranteed to show the same data).
+# ─────────────────────────────────────────────────────────────
+def _stream_graph_fig(sm, secs, name_a, name_b, small=False):
+    """Draws the clamshell stream-graph from an already-fetched song-map
+    dict (sm = api.get_song_map(...) result). small=True renders a bare,
+    axis-free thumbnail suitable for embedding in a grid cell; small=False
+    renders the full annotated chart (same as the Song Map tab)."""
+    bands, colors = sm["bands"], sm["colors"]
+    if not bands:
+        return None
+    time_full = sm["time"]
+    labels_s = list(bands.keys())
+    min_len = min(len(v) for v in bands.values())
+    times_s = np.array(time_full[:min_len])
+    vals_s = np.array([bands[l][:min_len] for l in labels_s])
+    cols_s = [colors[l] for l in labels_s]
+
+    fig_sg, ax_sg = plt.subplots(figsize=(2.0, 1.3) if small else (14, 4))
+    ax_sg.set_facecolor('#0f0f1a'); fig_sg.patch.set_facecolor('#0f0f1a')
+    ax_sg.axhline(0, color='white', lw=0.5 if small else 1.0, alpha=0.5, zorder=2)
+    legend_handles = []
+    cum_pos = np.zeros(min_len)
+    for label, val_sc, col in zip(labels_s, vals_s, cols_s):
+        upper = cum_pos + val_sc
+        patch = ax_sg.fill_between(times_s, cum_pos, upper, color=col, alpha=0.82, label=label)
+        legend_handles.append(patch); cum_pos = upper
+    cum_neg = np.zeros(min_len)
+    for val_sc, col in zip(vals_s, cols_s):
+        lower = cum_neg - val_sc
+        ax_sg.fill_between(times_s, lower, cum_neg, color=col, alpha=0.82)
+        cum_neg = lower
+
+    if not small:
+        total_s = vals_s.sum(axis=0)
+        mid_t = int(np.argmax(total_s))
+        cum_lbl = np.zeros(min_len)
+        for label, val_sc, col in zip(labels_s, vals_s, cols_s):
+            mid_y = (cum_lbl[mid_t] + cum_lbl[mid_t] + val_sc[mid_t]) / 2
+            if val_sc[mid_t] > 0.02:
+                ax_sg.text(times_s[mid_t], mid_y, label, fontsize=8, color='white',
+                           ha='center', va='center', fontweight='bold')
+            cum_lbl += val_sc
+        for b0, b1, t0_s, t1_s, lbl, cmp in secs:
+            ax_sg.axvline(t0_s, color='white', lw=0.6, alpha=0.4, ls='--')
+            ax_sg.text(t0_s+0.3, 0.98, lbl, fontsize=6, color='white',
+                       va='top', transform=ax_sg.get_xaxis_transform())
+
+    ax_sg.set_xlim(0, float(times_s[-1]) if min_len else 1.0)
+    ax_sg.set_ylim(-0.55, 0.55)
+    if small:
+        ax_sg.set_xticks([]); ax_sg.set_yticks([])
+        for sp in ax_sg.spines.values(): sp.set_visible(False)
+        fig_sg.subplots_adjust(left=0, right=1, top=1, bottom=0)
+    else:
+        ax_sg.set_yticks([-0.5, -0.25, 0, 0.25, 0.5])
+        ax_sg.set_yticklabels(["-0.5", "-0.25", "0", "+0.25", "+0.5"], fontsize=7, color='white')
+        ax_sg.set_xlabel("Time (s)", fontsize=8, color='white')
+        ax_sg.set_ylabel("Divergence", fontsize=8, color='white')
+        ax_sg.set_title(f"What drives the difference — {name_a} vs {name_b}",
+                        fontweight='bold', fontsize=10, color='white')
+        ax_sg.tick_params(colors='white')
+        for sp in ax_sg.spines.values(): sp.set_edgecolor('#333')
+        ax_sg.legend(handles=legend_handles[::-1], labels=labels_s[::-1], fontsize=8,
+                    loc='upper right', facecolor='#1a1a2e', labelcolor='white', edgecolor='#333')
+        plt.tight_layout()
+    return fig_sg
+
+
+def _fig_to_base64_png(fig, dpi=60):
+    """Encodes a matplotlib figure as a base64 PNG string for embedding
+    in raw HTML (components.html can't otherwise show a pyplot figure)."""
+    import base64
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi, facecolor=fig.get_facecolor())
+    plt.close(fig)
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode("ascii")
+
+
+@st.cache_data(show_spinner="Computing song maps for all pairs…")
+def _fetch_all_song_maps(rec_ids_tuple, backend_url):
+    """Eagerly fetches the song map (and sections) for every unordered
+    pair once. Cached per exact set of recording IDs (+ backend URL), so
+    re-running the script (e.g. clicking a cell-select button below the
+    grid) never re-hits the backend -- 'everything already computed
+    first', as requested. Symmetric pairs (j,i) reuse the (i,j) result,
+    matching the original monolith's approach."""
+    n = len(rec_ids_tuple)
+    song_maps, sections = {}, {}
+    for i in range(n):
+        for j in range(i + 1, n):
+            a_id, b_id = rec_ids_tuple[i], rec_ids_tuple[j]
+            try:
+                sm = api.get_song_map(a_id, b_id)
+                secs = api.get_sections(a_id, b_id)
+            except BackendError:
+                sm, secs = None, []
+            song_maps[(i, j)] = sm
+            sections[(i, j)] = secs
+    return song_maps, sections
+
+
+# ─────────────────────────────────────────────────────────────
 # N-recording matrix view (backend-driven)
 # ─────────────────────────────────────────────────────────────
 def render_matrix():
     st.subheader("Pairwise Similarity Matrix")
-    st.caption("Green = similar · Red = different.")
+    st.caption("Green = similar · Red = different. Each cell also shows that pair's "
+               "song-map (Volume/Brightness/Rhythm/Harmony over time) as a thumbnail — "
+               "pick a pair below to expand it to full size.")
     try:
         sim_matrix = api.matrix_similarity(rec_ids)
     except BackendError as e:
         st.error(f"Matrix unavailable: {e}"); return
+
+    # Eager, once-per-recording-set fetch of every pair's song map (restores
+    # the original monolith's behaviour). Cached by recording IDs + backend
+    # URL, so this only ever hits the backend once per set of uploads --
+    # selecting a pair below re-runs the script but reuses the cache.
+    song_maps, sections = _fetch_all_song_maps(tuple(rec_ids), api.BASE_URL)
+
+    thumbs = {}
+    for i in range(n_recs):
+        for j in range(n_recs):
+            if i == j:
+                continue
+            key = (min(i, j), max(i, j))
+            sm = song_maps.get(key)
+            if sm is None:
+                continue
+            if key not in thumbs:
+                fig_t = _stream_graph_fig(sm, sections.get(key, []), names[key[0]], names[key[1]], small=True)
+                thumbs[key] = _fig_to_base64_png(fig_t) if fig_t is not None else None
 
     def cell_bg(sim):
         r=int(233*(1-sim)+76*sim); g=int(30*(1-sim)+175*sim); b=int(99*(1-sim)+80*sim)
@@ -399,9 +536,11 @@ def render_matrix():
         display:flex;align-items:center;justify-content:center;font-weight:bold;word-break:break-word;}}
       .sim-row-label{{background:#1a1a2e;color:#aaa;font-size:10px;padding:4px 6px;border-radius:4px;
         display:flex;align-items:center;font-weight:bold;word-break:break-word;}}
-      .sim-cell{{border-radius:6px;padding:4px;text-align:center;height:{cell_size}px;
-        display:flex;flex-direction:column;align-items:center;justify-content:center;}}
-      .sim-cell .pct{{font-size:13px;font-weight:bold;}}
+      .sim-cell{{border-radius:6px;padding:4px;text-align:center;height:{cell_size}px;position:relative;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;}}
+      .sim-cell img{{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.55;}}
+      .sim-cell .pct{{font-size:13px;font-weight:bold;position:relative;z-index:1;
+        text-shadow:0 0 4px rgba(0,0,0,0.9),0 0 2px rgba(0,0,0,0.9);}}
       .sim-diag{{background:#1a1a2e;color:#444;font-size:20px;border-radius:6px;
         display:flex;align-items:center;justify-content:center;height:{cell_size}px;}}
     </style>"""
@@ -417,10 +556,51 @@ def render_matrix():
                 grid += '<div class="sim-diag">—</div>'
             else:
                 sim = sim_matrix[i,j]; bg = cell_bg(sim); tc = text_col(sim)
-                grid += f'<div class="sim-cell" style="background:{bg};color:{tc}"><span class="pct">{sim*100:.0f}%</span></div>'
+                thumb_b64 = thumbs.get((min(i,j), max(i,j)))
+                img_tag = f'<img src="data:image/png;base64,{thumb_b64}">' if thumb_b64 else ''
+                grid += (f'<div class="sim-cell" style="background:{bg};color:{tc}">{img_tag}'
+                         f'<span class="pct">{sim*100:.0f}%</span></div>')
     grid += '</div>'
     import streamlit.components.v1 as components
     components.html(css+grid, height=44+n*(cell_size+4), scrolling=False)
+
+    # ── Click-to-expand: HTML in components.html can't send click events
+    # back to Python, so (matching the original monolith) a row of
+    # st.button()s below the grid stands in for "clicking a cell". The
+    # selected pair's full-size stream graph is drawn from the SAME
+    # song_maps/sections already fetched above -- no new backend call.
+    all_pairs = [(i, j) for i in range(n) for j in range(i + 1, n) if song_maps.get((i, j)) is not None]
+    if all_pairs:
+        st.markdown("**Expand a pair's song-map:**")
+        if "matrix_selected_pair" not in st.session_state or st.session_state["matrix_selected_pair"] not in all_pairs:
+            st.session_state["matrix_selected_pair"] = all_pairs[0]
+        btn_cols = st.columns(min(len(all_pairs), 6))
+        for idx, (pi, pj) in enumerate(all_pairs):
+            with btn_cols[idx % len(btn_cols)]:
+                is_sel = st.session_state["matrix_selected_pair"] == (pi, pj)
+                if st.button(f"{'🔵 ' if is_sel else ''}{names[pi]} vs {names[pj]} ({sim_matrix[pi,pj]*100:.0f}%)",
+                             key=f"matrix_pair_btn_{pi}_{pj}", use_container_width=True):
+                    st.session_state["matrix_selected_pair"] = (pi, pj)
+                    st.rerun()
+
+        sel_i, sel_j = st.session_state["matrix_selected_pair"]
+        sel_sm = song_maps[(sel_i, sel_j)]
+        sel_secs = sections.get((sel_i, sel_j), [])
+        fig_full = _stream_graph_fig(sel_sm, sel_secs, names[sel_i], names[sel_j], small=False)
+        if fig_full is not None:
+            st.pyplot(fig_full, use_container_width=True)
+            plt.close(fig_full)
+            moments = sel_sm.get("top_divergent_moments") or []
+            if moments:
+                st.markdown("**Top 3 most different moments:**")
+                for rank, m in enumerate(moments):
+                    pt2 = m["time"]
+                    st.markdown(
+                        f"{rank+1}. **{int(pt2//60)}:{int(pt2%60):02d}** — "
+                        f"divergence {m['divergence']:.2f} · driven by **{m['dominant_band']}**")
+        else:
+            st.info("Enable Spectral Features and Onset for the stream graph.")
+        st.markdown("---")
 
     if n >= 3:
         st.markdown("#### Recording Map (MDS)")
@@ -514,7 +694,7 @@ def render_matrix():
     st.markdown("---")
     st.subheader("All Rehearsals — Group View")
     try:
-        gv = api.matrix_group_view(rec_ids, t0=zoom_start, t1=zoom_end)
+        gv = api.matrix_group_view(rec_ids, names=names, t0=zoom_start, t1=zoom_end)
     except BackendError as e:
         st.info(f"Group view unavailable: {e}"); return
     if not gv:
