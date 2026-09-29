@@ -6,14 +6,15 @@ using real audio feature extraction (not just waveform diffing), DTW
 alignment, and similarity scoring. Built as HIWI research work at VISUS
 (Visualisierungsinstitut, Universität Stuttgart), under Simeon's supervision.
 
-> Screenshots below are placeholders - drop your PNGs into a `screenshots/`
-> folder at the repo root using the filenames shown under each image, and
-> they'll render here automatically on GitHub.
+> Drop your PNGs into a `screenshots/` folder at the repo root using the
+> filenames referenced below, and they'll render here automatically on
+> GitHub once pushed.
 
 > **New here?** [`WALKTHROUGH.md`](WALKTHROUGH.md) is the full narrated,
 > screenshot-by-screenshot tour - upload through every visualization, in the
-> order you'd actually click through them. This README covers architecture
-> and setup; WALKTHROUGH.md covers what the app actually does and shows.
+> order you'd actually click through them, with all 34 screenshots embedded.
+> This README covers architecture and setup with a handful of highlights;
+> WALKTHROUGH.md covers everything the app does and shows, image by image.
 
 ---
 
@@ -74,10 +75,6 @@ duplicating any analysis code.
 images - drawing stays entirely on the client side, keeping the backend a
 pure compute service.
 
-### Screenshot: architecture in practice
-`screenshots/architecture-both-apps-running.png` - both frontends open
-side-by-side against the same backend instance.
-
 ---
 
 ## Two frontend personas
@@ -94,42 +91,42 @@ work: full scientific numbers, every plot, every feature tab.
 - Pairwise Similarity Matrix - a color-coded grid (green = similar, red =
   different) for all pairs at once when comparing 3+ recordings, with each
   cell showing an embedded stream-graph thumbnail; clicking a pair below the
-  grid expands its full-size stream graph and top-3-most-different-moments
-  list, using data already fetched (no extra backend round-trip on click)
-
-  `screenshots/full-pairwise-matrix.png`
-
-- Full-size stream graph (Song Map tab) - the clamshell-style divergence
-  chart per pair
-
-  `screenshots/full-stream-graph.png`
-
+  grid expands its full-size stream graph, using data already fetched (no
+  extra backend round-trip on click)
 - Recording Map (MDS) - 2D distance plot across all recordings, with
   adjustable feature-group weights
-
-  `screenshots/full-mds-map.png`
-
 - Group View - raw feature values (not divergence) across all recordings
   over time
+- Spectrograms, harmony/rhythm/dynamics/spectral tabs, DTW alignment view,
+  score alignment against an optional uploaded MIDI reference - full
+  feature depth, all sidebar-toggleable
 
-  `screenshots/full-group-view.png`
+<table>
+  <tr>
+    <td align="center">
+      <img src="screenshots/full-sidebar-upload.png" width="370" alt="Sidebar with upload and feature toggles"><br>
+      <sub>Sidebar: upload, score mode, feature toggles</sub>
+    </td>
+    <td align="center">
+      <img src="screenshots/full-pairwise-matrix.png" width="370" alt="Pairwise Similarity Matrix"><br>
+      <sub>Pairwise Similarity Matrix with thumbnails</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="screenshots/full-stream-graph.png" width="370" alt="Full-size stream graph"><br>
+      <sub>Expanded stream graph for one pair</sub>
+    </td>
+    <td align="center">
+      <img src="screenshots/full-mds-map.png" width="370" alt="MDS Recording Map"><br>
+      <sub>Recording Map (MDS)</sub>
+    </td>
+  </tr>
+</table>
 
-- Section breakdown and stacked bars (per-section same/slight/notable
-  flagging)
-
-  `screenshots/full-section-breakdown.png`
-  `screenshots/full-stacked-bars.png`
-
-- Spectrograms, harmony/rhythm/timbre/dynamics tabs, DTW alignment view,
-  waveform diff - full feature depth, all sidebar-toggleable
-
-  `screenshots/full-spectrograms.png`
-  `screenshots/full-alignment.png`
-
-- Sidebar feature toggles (Core, Advanced) controlling exactly which librosa
-  transforms run per upload
-
-  `screenshots/full-sidebar-upload.png`
+See [`WALKTHROUGH.md`](WALKTHROUGH.md) for the full set - Group View,
+Alignment, Harmony, Rhythm, Dynamics, Spectral, Spectrograms, and Score
+Alignment, all with real screenshots.
 
 **Feature flags sent per upload** (`FEATURE_FLAGS` in `app_full_client.py`):
 mel spectrogram, chroma, spectral features, onset - on by default; CQT,
@@ -148,8 +145,18 @@ want plain-language verdicts, not spectrograms or scientific numbers.
   underlying charts exposed
 - Supports up to 8 takes at once
 
-  `screenshots/esm-overview.png`
-  `screenshots/esm-tap-to-expand.png`
+<table>
+  <tr>
+    <td align="center">
+      <img src="screenshots/esm-overview.png" width="370" alt="ESM overview"><br>
+      <sub>ESM overview - percentages and verdicts</sub>
+    </td>
+    <td align="center">
+      <img src="screenshots/esm-tap-to-expand.png" width="370" alt="ESM tap to expand"><br>
+      <sub>Tap-to-expand plain-language explanation</sub>
+    </td>
+  </tr>
+</table>
 
 **Feature flags sent per upload** (`ESM_FEATURE_FLAGS`): MFCC, chroma,
 spectral, onset, SMS on - mel, CQT, STFT, CWT, gammatone, Tonnetz, ZCR,
