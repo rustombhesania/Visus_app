@@ -9,10 +9,6 @@ using real audio feature extraction (not just waveform diffing), DTW
 alignment, and similarity scoring. Built as HIWI research work at VISUS
 (Visualisierungsinstitut, Universität Stuttgart), under Simeon's supervision.
 
-> Drop your PNGs into a `screenshots/` folder at the repo root using the
-> filenames referenced below, and they'll render here automatically on
-> GitHub once pushed.
-
 ViSuS ships as **two personas**, each its own app against the same backend:
 
 | | Full client | ESM |
