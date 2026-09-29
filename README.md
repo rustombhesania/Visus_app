@@ -1,5 +1,8 @@
 # ViSuS - Music Rehearsal Recording Comparison Tool
 
+**Live demo:** coming soon - hosting is in progress, see
+[Hosting status](#hosting-status) below.
+
 ViSuS analyzes and compares multiple recordings of the same piece - different
 takes of one rehearsal, or the same song played in different sessions/styles -
 using real audio feature extraction (not just waveform diffing), DTW
@@ -10,11 +13,19 @@ alignment, and similarity scoring. Built as HIWI research work at VISUS
 > filenames referenced below, and they'll render here automatically on
 > GitHub once pushed.
 
-> **New here?** [`WALKTHROUGH.md`](WALKTHROUGH.md) is the full narrated,
-> screenshot-by-screenshot tour - upload through every visualization, in the
-> order you'd actually click through them, with all 34 screenshots embedded.
-> This README covers architecture and setup with a handful of highlights;
-> WALKTHROUGH.md covers everything the app does and shows, image by image.
+ViSuS ships as **two personas**, each its own app against the same backend:
+
+| | Full client | ESM |
+|---|---|---|
+| **Who it's for** | Rustom / Simeon - detailed research analysis | A real university band ("Everybody Speaks Music") who want a fast, plain-language answer, not a research tool |
+| **What it shows** | Every plot, every number, full feature depth | Percentage similarity, key/tempo, and a plain-language verdict - no spectrograms, no raw plots |
+| **Read the write-up** | this README + [`WALKTHROUGH.md`](WALKTHROUGH.md) | [`ESM_README.md`](ESM_README.md) - who ESM is and why they get their own app |
+| **See it in action** | [`WALKTHROUGH.md`](WALKTHROUGH.md) - all 34 screenshots, narrated | [`WALKTHROUGH_ESM.md`](WALKTHROUGH_ESM.md) - narrated, screenshot by screenshot |
+
+Both personas call the exact same backend and the exact same analysis - the
+difference is entirely in what each frontend chooses to show, and to whom.
+This README covers architecture and setup for both; the two walkthrough
+files are the visual tours.
 
 ---
 
@@ -42,24 +53,25 @@ with DTW, and produces:
 ## Architecture
 
 ```
-┌─────────────────────────┐        ┌──────────────────────────┐
-│   Full client frontend   │        │    ESM client frontend    │
-│   (app_full_client.py)   │        │    (app_esm_client.py)    │
-└────────────┬──────────────┘        └─────────────┬──────────────┘
-             │                                      │
-             └──────────────┬───────────────────────┘
-                             │  HTTP (JSON + numpy arrays)
-                     ┌───────▼────────┐
-                     │  api_client.py  │   <- the ONLY file either
-                     └───────┬────────┘      frontend uses to talk
-                             │                to the backend
-                             │
-                     ┌───────▼────────┐
-                     │  FastAPI backend │
-                     │  (main.py)       │
-                     │  compute.py      │  <- all audio analysis
-                     │  verdict.py      │  <- same/slight/notable logic
-                     └──────────────────┘
+┌──────────────────────┐      ┌──────────────────────┐
+│ Full client frontend │      │ ESM client frontend  │
+│ (app_full_client.py) │      │ (app_esm_client.py)  │
+└──────────────────────┘      └──────────────────────┘
+            │                             │           
+            └──────────────┴──────────────┘           
+                           │
+              HTTP (JSON + numpy arrays)
+                           ▼
+                   ┌───────────────┐
+                   │ api_client.py │
+                   └───────────────┘
+                           │
+                           ▼
+     ┌──────────────────────────────────────────┐
+     │        FastAPI backend (main.py)         │
+     │    compute.py  -- all audio analysis     │
+     │ verdict.py  -- same/slight/notable logic │
+     └──────────────────────────────────────────┘
 ```
 
 The backend does **all** compute - librosa feature extraction, DTW alignment,
@@ -101,28 +113,29 @@ work: full scientific numbers, every plot, every feature tab.
   score alignment against an optional uploaded MIDI reference - full
   feature depth, all sidebar-toggleable
 
-<table>
-  <tr>
-    <td align="center">
-      <img src="screenshots/full-sidebar-upload.png" width="370" alt="Sidebar with upload and feature toggles"><br>
-      <sub>Sidebar: upload, score mode, feature toggles</sub>
-    </td>
-    <td align="center">
-      <img src="screenshots/full-pairwise-matrix.png" width="370" alt="Pairwise Similarity Matrix"><br>
-      <sub>Pairwise Similarity Matrix with thumbnails</sub>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <img src="screenshots/full-stream-graph.png" width="370" alt="Full-size stream graph"><br>
-      <sub>Expanded stream graph for one pair</sub>
-    </td>
-    <td align="center">
-      <img src="screenshots/full-mds-map.png" width="370" alt="MDS Recording Map"><br>
-      <sub>Recording Map (MDS)</sub>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src="screenshots/full-sidebar-upload.png" width="800" alt="Sidebar with upload and feature toggles">
+</p>
+
+*Sidebar: upload, score mode, feature toggles.*
+
+<p align="center">
+  <img src="screenshots/full-pairwise-matrix.png" width="800" alt="Pairwise Similarity Matrix">
+</p>
+
+*Pairwise Similarity Matrix with thumbnails.*
+
+<p align="center">
+  <img src="screenshots/full-stream-graph.png" width="800" alt="Full-size stream graph">
+</p>
+
+*Expanded stream graph for one pair.*
+
+<p align="center">
+  <img src="screenshots/full-mds-map.png" width="800" alt="MDS Recording Map">
+</p>
+
+*Recording Map (MDS).*
 
 See [`WALKTHROUGH.md`](WALKTHROUGH.md) for the full set - Group View,
 Alignment, Harmony, Rhythm, Dynamics, Spectral, Spectrograms, and Score
@@ -135,28 +148,40 @@ toggleable in the sidebar.
 
 ### 2. ESM client - "Everybody Speaks Music" (`app_esm_client.py`)
 
-The simplified, non-technical persona - built for an external band/group who
-want plain-language verdicts, not spectrograms or scientific numbers.
+ESM isn't a generic "simple mode" - it's built for a specific, real
+university band of that name, who rehearse the same songs repeatedly and
+want a fast, honest read on how a take compares to previous ones, without
+needing to interpret a spectrogram or a DTW plot to get there. Full details,
+including real feedback from a pilot session with the group, are in
+[`ESM_README.md`](ESM_README.md).
 
 **What it shows:**
-- Percentage similarity per pair, tap-to-expand plain-language explanations
-- Key, mode, and tempo - no raw plots
-- Same same/slight/notable verdict language as the Full client, but no
-  underlying charts exposed
+- A single plain-language verdict per pair, with audio playback and
+  key/tempo up top - no matrix grid
+- "What stands out" summary cards (Tempo, Timing, Key/Mode, Loudness, Tone,
+  Texture, Sound Character), in words
+- A simplified stream graph and a 7-part section-by-section breakdown
+  (Intro, A, B, A', C, B', Outro), same neutral same/slight/notable
+  language as the Full client
+- Four dimension cards (Harmony, Rhythm, Timbre, Dynamics), each a
+  percentage badge plus one simplified chart, not a spectrogram
 - Supports up to 8 takes at once
 
-<table>
-  <tr>
-    <td align="center">
-      <img src="screenshots/esm-overview.png" width="370" alt="ESM overview"><br>
-      <sub>ESM overview - percentages and verdicts</sub>
-    </td>
-    <td align="center">
-      <img src="screenshots/esm-tap-to-expand.png" width="370" alt="ESM tap to expand"><br>
-      <sub>Tap-to-expand plain-language explanation</sub>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src="screenshots/esm-client/esm-02-match-verdict-and-audio.png" width="800" alt="ESM match verdict and audio playback">
+</p>
+
+*ESM's headline result - plain-language verdict, audio playback, key/tempo.*
+
+<p align="center">
+  <img src="screenshots/esm-client/esm-04-stream-graph-divergence.png" width="800" alt="ESM stream graph divergence">
+</p>
+
+*Simplified stream graph showing where two takes diverge.*
+
+See [`WALKTHROUGH_ESM.md`](WALKTHROUGH_ESM.md) for the full narrated tour,
+and [`ESM_README.md`](ESM_README.md) for who this persona is built for and
+why.
 
 **Feature flags sent per upload** (`ESM_FEATURE_FLAGS`): MFCC, chroma,
 spectral, onset, SMS on - mel, CQT, STFT, CWT, gammatone, Tonnetz, ZCR,
